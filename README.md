@@ -8,9 +8,11 @@
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+[![Open In NBViewer](https://img.shields.io/badge/Jupyter-Notebook-orange?logo=jupyter)](https://nbviewer.org/github/mobadata/fraud-detection-ml-system/blob/main/notebooks/01_data_exploration.ipynb)
+
 **Un système complet de détection de fraude bancaire avec ML/MLOps - De l'exploration à la production**
 
-[🚀 Démo Live](#demo) • [📖 Documentation](#documentation) • [🎯 Features](#features) • [⚡ Quick Start](#quick-start)
+[🚀 Démo Live](#demo) • [📖 Documentation](#documentation) • [🎯 Features](#features) • [⚡ Quick Start](#quick-start) • [📊 Notebooks](https://nbviewer.org/github/mobadata/fraud-detection-ml-system/tree/main/notebooks/)
 
 </div>
 

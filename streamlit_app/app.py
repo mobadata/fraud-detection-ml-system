@@ -178,8 +178,8 @@ if mode == "🎲 Test avec données réelles":
                 # Bouton de prédiction
                 if st.button("🔍 Analyser cette transaction", key="predict_btn"):
                     # Extraire les features
-                    feature_cols = [col for col in df.columns if col not in ['Class']]
-                    features = transaction[feature_cols].values
+                    feature_cols = [col for col in df.columns if col != 'Class']
+                    features = transaction[feature_cols].values  # Garder 1D pour predict_fraud
                     
                     # Prédiction
                     pred, proba = predict_fraud(model, scaler, features)
@@ -248,17 +248,23 @@ if mode == "🎲 Test avec données réelles":
                         
                         with st.spinner("Calcul des explications SHAP..."):
                             try:
-                                # Calculer SHAP values
+                                # S'assurer que features est correctement formaté
+                                features_array = np.array(features).flatten()
+                                if len(features_array) != len(feature_cols):
+                                    raise ValueError(f"Features: {len(features_array)}, attendu: {len(feature_cols)}")
+                                
+                                # Reshape en 2D pour SHAP
+                                features_2d = features_array.reshape(1, -1)
+                                
                                 shap_values, expected_value = explainer.explain_prediction(
-                                    features, 
-                                    feature_cols=[col for col in df.columns if col != 'Class']
+                                    features_2d, 
+                                    feature_cols
                                 )
                                 
                                 # Top features
-                                feature_names = [col for col in df.columns if col != 'Class']
                                 top_features = explainer.get_top_features(
                                     shap_values, 
-                                    feature_names, 
+                                    feature_cols, 
                                     top_n=10
                                 )
                                 
@@ -271,7 +277,7 @@ if mode == "🎲 Test avec données réelles":
                                 
                                 # Bar plot
                                 st.markdown("**Impact des features sur la prédiction**")
-                                fig_shap = explainer.plot_bar(shap_values, feature_names, max_display=10)
+                                fig_shap = explainer.plot_bar(shap_values, feature_cols, max_display=10)
                                 st.pyplot(fig_shap)
                                 
                                 # Explication
@@ -384,8 +390,17 @@ elif mode == "✏️ Saisie manuelle":
                     try:
                         # Calculer SHAP values
                         feature_names = [f'V{i}' for i in range(1, 29)] + ['Time', 'Amount']
+                        
+                        # S'assurer que features est un numpy array 1D de 30 éléments
+                        features_array = np.array(features).flatten()
+                        if len(features_array) != 30:
+                            raise ValueError(f"Features a {len(features_array)} éléments, attendu 30")
+                        
+                        # Reshape en 2D pour SHAP
+                        features_2d = features_array.reshape(1, -1)
+                        
                         shap_values, expected_value = explainer.explain_prediction(
-                            features.reshape(1, -1), 
+                            features_2d, 
                             feature_names
                         )
                         

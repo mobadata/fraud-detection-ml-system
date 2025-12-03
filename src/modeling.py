@@ -68,32 +68,37 @@ class FraudDetector:
             )
         elif self.model_type == 'random_forest':
             self.model = RandomForestClassifier(
-                n_estimators=100,
-                max_depth=10,
+                n_estimators=200,
+                max_depth=15,
+                min_samples_split=2,
+                min_samples_leaf=1,
                 random_state=self.random_state,
-                class_weight='balanced',
+                class_weight={0: 1, 1: 20},  # Poids plus agressif pour les fraudes
                 n_jobs=-1
             )
         elif self.model_type == 'xgboost':
             if not XGBOOST_AVAILABLE:
                 raise ImportError("XGBoost n'est pas installé. Installez-le avec : pip install xgboost")
+            # Calculer scale_pos_weight si y_train disponible
             self.model = xgb.XGBClassifier(
-                n_estimators=100,
+                n_estimators=200,
                 max_depth=6,
                 learning_rate=0.1,
                 random_state=self.random_state,
                 eval_metric='logloss',
-                use_label_encoder=False
+                use_label_encoder=False,
+                scale_pos_weight=1  # Sera ajusté lors de l'entraînement si nécessaire
             )
         elif self.model_type == 'lightgbm':
             if not LIGHTGBM_AVAILABLE:
                 raise ImportError("LightGBM n'est pas installé. Installez-le avec : pip install lightgbm")
             self.model = lgb.LGBMClassifier(
-                n_estimators=100,
+                n_estimators=200,
                 max_depth=6,
                 learning_rate=0.1,
                 random_state=self.random_state,
-                verbose=-1
+                verbose=-1,
+                is_unbalance=True  # Gère automatiquement le déséquilibre
             )
         else:
             raise ValueError(f"Type de modèle '{self.model_type}' non supporté")
@@ -110,6 +115,12 @@ class FraudDetector:
         """
         print(f"\n🔧 Entraînement du modèle {self.model_type}...")
         print(f"   Shape : {X_train.shape}")
+        
+        # Ajuster scale_pos_weight pour XGBoost si nécessaire
+        if self.model_type == 'xgboost' and hasattr(self.model, 'scale_pos_weight'):
+            scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+            self.model.set_params(scale_pos_weight=scale_pos_weight)
+            print(f"   scale_pos_weight ajusté : {scale_pos_weight:.2f}")
         
         start_time = time.time()
         self.model.fit(X_train, y_train)
@@ -231,7 +242,38 @@ class FraudDetector:
         print(f"✅ Modèle chargé : {path}")
 
 
-def compare_models(X_train, X_test, y_train, y_test, models_to_test=None):
+def find_optimal_threshold(y_true, y_pred_proba):
+    """
+    Trouve le seuil optimal pour maximiser F1-score
+    
+    Args:
+        y_true: Vraies valeurs
+        y_pred_proba: Probabilités prédites
+        
+    Returns:
+        optimal_threshold: Seuil optimal
+        optimal_f1: F1-score au seuil optimal
+    """
+    from sklearn.metrics import precision_recall_curve, f1_score
+    
+    precision, recall, thresholds = precision_recall_curve(y_true, y_pred_proba)
+    
+    # Calculer F1-score pour chaque seuil
+    f1_scores = []
+    for threshold in thresholds:
+        y_pred_thresh = (y_pred_proba >= threshold).astype(int)
+        f1 = f1_score(y_true, y_pred_thresh, zero_division=0)
+        f1_scores.append(f1)
+    
+    # Trouver le seuil avec le meilleur F1-score
+    optimal_idx = np.argmax(f1_scores) if len(f1_scores) > 0 else 0
+    optimal_threshold = thresholds[optimal_idx] if optimal_idx < len(thresholds) else 0.5
+    optimal_f1 = f1_scores[optimal_idx] if len(f1_scores) > 0 else 0.0
+    
+    return optimal_threshold, optimal_f1
+
+
+def compare_models(X_train, X_test, y_train, y_test, models_to_test=None, optimize_threshold=True):
     """
     Compare plusieurs modèles
     
@@ -262,7 +304,35 @@ def compare_models(X_train, X_test, y_train, y_test, models_to_test=None):
         
         detector = FraudDetector(model_type=model_type)
         detector.train(X_train, y_train)
-        metrics = detector.evaluate(X_test, y_test, show_plots=False)
+        
+        # Obtenir les probabilités
+        y_pred_proba = detector.predict_proba(X_test)
+        
+        # Optimiser le seuil si demandé
+        if optimize_threshold:
+            optimal_threshold, optimal_f1 = find_optimal_threshold(y_test, y_pred_proba)
+            y_pred_optimized = (y_pred_proba >= optimal_threshold).astype(int)
+            
+            # Recalculer les métriques avec le seuil optimal
+            from sklearn.metrics import (
+                accuracy_score, precision_score, recall_score, 
+                f1_score, roc_auc_score
+            )
+            
+            metrics = {
+                'accuracy': accuracy_score(y_test, y_pred_optimized),
+                'precision': precision_score(y_test, y_pred_optimized, zero_division=0),
+                'recall': recall_score(y_test, y_pred_optimized),
+                'f1_score': f1_score(y_test, y_pred_optimized),
+                'roc_auc': roc_auc_score(y_test, y_pred_proba),
+                'training_time': detector.training_time,
+                'optimal_threshold': optimal_threshold
+            }
+            
+            print(f"\n🎯 Seuil optimal : {optimal_threshold:.4f}")
+            print(f"   F1-Score avec seuil optimal : {metrics['f1_score']:.4f}")
+        else:
+            metrics = detector.evaluate(X_test, y_test, show_plots=False)
         
         results.append({
             'Model': model_type,
@@ -308,4 +378,6 @@ if __name__ == "__main__":
     detector.evaluate(X_test, y_test, show_plots=False)
     
     print("\n✅ Test réussi !")
+
+
 

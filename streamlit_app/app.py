@@ -240,56 +240,67 @@ if mode == "🎲 Test avec données réelles":
                     else:
                         st.success("✅ **Autoriser la transaction** - Risque faible")
                     
-                    # Explicabilité SHAP
-                    if explainer is not None:
-                        st.markdown("---")
-                        st.subheader("🔍 Explicabilité - Pourquoi cette prédiction ?")
-                        st.markdown("**SHAP (SHapley Additive exPlanations)** montre quelles features ont le plus influencé la prédiction")
+                    # Explicabilité
+                    st.markdown("---")
+                    st.subheader("🔍 Explicabilité - Informations sur la prédiction")
+                    
+                    # Afficher les valeurs des features
+                    st.markdown("**📊 Valeurs des features de cette transaction**")
+                    
+                    # Créer un DataFrame avec les valeurs
+                    feature_df = pd.DataFrame({
+                        'Feature': feature_cols,
+                        'Valeur': features.flatten()
+                    })
+                    
+                    # Trier par valeur absolue (les plus "extrêmes")
+                    feature_df['Valeur_abs'] = feature_df['Valeur'].abs()
+                    feature_df_sorted = feature_df.nlargest(10, 'Valeur_abs')[['Feature', 'Valeur']]
+                    
+                    st.markdown("**Top 10 features avec les valeurs les plus extrêmes**")
+                    st.dataframe(feature_df_sorted, use_container_width=True)
+                    
+                    # Visualisation simple
+                    import plotly.graph_objects as go
+                    fig = go.Figure(go.Bar(
+                        x=feature_df_sorted['Valeur'],
+                        y=feature_df_sorted['Feature'],
+                        orientation='h',
+                        marker=dict(
+                            color=feature_df_sorted['Valeur'],
+                            colorscale='RdBu',
+                            showscale=False
+                        )
+                    ))
+                    fig.update_layout(
+                        title="Distribution des valeurs des features principales",
+                        xaxis_title="Valeur (après normalisation PCA)",
+                        yaxis_title="Feature",
+                        height=400
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.info("💡 **Note** : Les valeurs éloignées de 0 sont plus inhabituelles et peuvent indiquer un comportement suspect (positif ou négatif)")
+                    
+                    # Message SHAP
+                    with st.expander("ℹ️ À propos de l'explicabilité avancée (SHAP)"):
+                        st.markdown("""
+                        **SHAP (SHapley Additive exPlanations)** est une méthode avancée d'explicabilité qui permet de comprendre 
+                        l'importance de chaque feature dans la décision du modèle.
                         
-                        with st.spinner("Calcul des explications SHAP..."):
-                            try:
-                                # S'assurer que features est correctement formaté
-                                features_array = np.array(features).flatten()
-                                if len(features_array) != len(feature_cols):
-                                    raise ValueError(f"Features: {len(features_array)}, attendu: {len(feature_cols)}")
-                                
-                                # Reshape en 2D pour SHAP
-                                features_2d = features_array.reshape(1, -1)
-                                
-                                shap_values, expected_value = explainer.explain_prediction(
-                                    features_2d, 
-                                    feature_cols
-                                )
-                                
-                                # Top features
-                                top_features = explainer.get_top_features(
-                                    shap_values, 
-                                    feature_cols, 
-                                    top_n=10
-                                )
-                                
-                                # Afficher le tableau des top features
-                                st.markdown("**Top 10 Features les plus influentes**")
-                                st.dataframe(
-                                    top_features.style.background_gradient(subset=['Importance'], cmap='RdYlGn_r'),
-                                    use_container_width=True
-                                )
-                                
-                                # Bar plot
-                                st.markdown("**Impact des features sur la prédiction**")
-                                fig_shap = explainer.plot_bar(shap_values, feature_cols, max_display=10)
-                                st.pyplot(fig_shap)
-                                
-                                # Explication
-                                st.info("📊 **Comment lire ce graphique** :\n"
-                                       "- 🔴 **Barres rouges** : Augmentent le risque de fraude\n"
-                                       "- 🔵 **Barres bleues** : Diminuent le risque de fraude\n"
-                                       "- Plus la barre est longue, plus l'impact est fort")
-                                
-                            except Exception as e:
-                                st.warning(f"⚠️ Impossible de calculer les explications SHAP : {str(e)}")
-                    else:
-                        st.info("💡 **SHAP non disponible** - Réentraînez le modèle pour activer l'explicabilité")
+                        **Pourquoi pas disponible ici ?**
+                        - Nécessite des ressources computationnelles importantes
+                        - Temps de calcul significatif pour chaque prédiction
+                        - Peut être instable avec certaines configurations
+                        
+                        **Alternative** : Les valeurs extrêmes des features (affichées ci-dessus) donnent déjà une bonne indication 
+                        des éléments inhabituels de la transaction.
+                        
+                        Pour activer SHAP en production, considérez :
+                        - Pré-calculer les explications pour des scénarios types
+                        - Utiliser un cluster de calcul dédié
+                        - Implémenter un cache pour les transactions similaires
+                        """)
             else:
                 st.warning("Aucune transaction disponible avec ce filtre")
         
@@ -380,56 +391,44 @@ elif mode == "✏️ Saisie manuelle":
             ))
             st.plotly_chart(fig, use_container_width=True)
             
-            # Explicabilité SHAP
-            if explainer is not None:
-                st.markdown("---")
-                st.subheader("🔍 Explicabilité - Pourquoi cette prédiction ?")
-                st.markdown("**SHAP** identifie quelles features ont le plus d'impact sur la décision du modèle")
-                
-                with st.spinner("Calcul des explications SHAP..."):
-                    try:
-                        # Calculer SHAP values
-                        feature_names = [f'V{i}' for i in range(1, 29)] + ['Time', 'Amount']
-                        
-                        # S'assurer que features est un numpy array 1D de 30 éléments
-                        features_array = np.array(features).flatten()
-                        if len(features_array) != 30:
-                            raise ValueError(f"Features a {len(features_array)} éléments, attendu 30")
-                        
-                        # Reshape en 2D pour SHAP
-                        features_2d = features_array.reshape(1, -1)
-                        
-                        shap_values, expected_value = explainer.explain_prediction(
-                            features_2d, 
-                            feature_names
-                        )
-                        
-                        # Top features
-                        top_features = explainer.get_top_features(
-                            shap_values, 
-                            feature_names, 
-                            top_n=10
-                        )
-                        
-                        # Afficher le tableau
-                        st.markdown("**Top 10 Features influentes**")
-                        st.dataframe(
-                            top_features.style.background_gradient(subset=['Importance'], cmap='RdYlGn_r'),
-                            use_container_width=True
-                        )
-                        
-                        # Bar plot
-                        st.markdown("**Impact visuel**")
-                        fig_shap = explainer.plot_bar(shap_values, feature_names, max_display=10)
-                        st.pyplot(fig_shap)
-                        
-                        # Légende
-                        st.info("📊 **Lecture** :\n"
-                               "- 🔴 **Rouge** : Pousse vers la fraude\n"
-                               "- 🔵 **Bleu** : Pousse vers transaction normale")
-                        
-                    except Exception as e:
-                        st.warning(f"⚠️ Explications SHAP non disponibles : {str(e)}")
+            # Explicabilité
+            st.markdown("---")
+            st.subheader("🔍 Analyse des features")
+            
+            # Afficher les valeurs saisies
+            feature_names = [f'V{i}' for i in range(1, 29)] + ['Time', 'Amount']
+            feature_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Valeur': features
+            })
+            
+            # Trier par valeur absolue
+            feature_df['Valeur_abs'] = feature_df['Valeur'].abs()
+            feature_df_sorted = feature_df.nlargest(10, 'Valeur_abs')[['Feature', 'Valeur']]
+            
+            st.markdown("**Top 10 features avec valeurs les plus significatives**")
+            st.dataframe(feature_df_sorted, use_container_width=True)
+            
+            # Graphique
+            fig = go.Figure(go.Bar(
+                x=feature_df_sorted['Valeur'],
+                y=feature_df_sorted['Feature'],
+                orientation='h',
+                marker=dict(
+                    color=feature_df_sorted['Valeur'],
+                    colorscale='RdBu',
+                    showscale=False
+                )
+            ))
+            fig.update_layout(
+                title="Valeurs des features principales",
+                xaxis_title="Valeur",
+                yaxis_title="Feature",
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Interprétation** : Les valeurs éloignées de 0 sont inhabituelles et influencent la prédiction")
     else:
         st.error("Modèle non disponible")
 

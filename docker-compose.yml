@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # API FastAPI
+  api:
+    build: .
+    container_name: fraud-detection-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Dashboard Streamlit
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: fraud-detection-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - ENVIRONMENT=production
+    restart: unless-stopped
+    depends_on:
+      - api
+
+# Optional: Add nginx for reverse proxy
+# networks:
+#   fraud-network:
+#     driver: bridge
+

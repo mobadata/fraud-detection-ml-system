@@ -1,0 +1,29 @@
+# Dockerfile pour le Dashboard Streamlit
+FROM python:3.11-slim
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Répertoire de travail
+WORKDIR /app
+
+# Copier les requirements
+COPY requirements.txt .
+
+# Installer les dépendances
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code source
+COPY src/ ./src/
+COPY streamlit_app/ ./streamlit_app/
+COPY models/ ./models/
+COPY data/ ./data/
+
+# Exposer le port
+EXPOSE 8501
+
+# Commande de démarrage
+CMD ["streamlit", "run", "streamlit_app/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+

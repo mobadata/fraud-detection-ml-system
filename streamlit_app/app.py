@@ -16,6 +16,8 @@ import plotly.express as px
 # Ajouter le dossier src au path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
+from explainability import FraudExplainer
+
 # Configuration de la page
 st.set_page_config(
     page_title="Détection de Fraude - Dashboard",
@@ -41,24 +43,33 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Chemins des modèles
-MODEL_PATH = Path(__file__).parent.parent / "models" / "best_model_random_forest.pkl"
+MODEL_PATH = Path(__file__).parent.parent / "models" / "best_model_logistic.pkl"
 SCALER_PATH = Path(__file__).parent.parent / "models" / "scaler.pkl"
 DATA_PATH = Path(__file__).parent.parent / "data" / "raw" / "creditcard.csv"
 
 
 @st.cache_resource
 def load_model_and_scaler():
-    """Charge le modèle et le scaler (avec cache)"""
+    """Charge le modèle, le scaler et l'explainer SHAP (avec cache)"""
     try:
         if MODEL_PATH.exists() and SCALER_PATH.exists():
             model = joblib.load(MODEL_PATH)
             scaler = joblib.load(SCALER_PATH)
-            return model, scaler, None
+            
+            # Charger un échantillon de données pour SHAP
+            explainer = None
+            if DATA_PATH.exists():
+                df_sample = pd.read_csv(DATA_PATH).sample(n=min(200, len(pd.read_csv(DATA_PATH))), random_state=42)
+                X_sample = df_sample.drop('Class', axis=1)
+                X_sample_scaled = scaler.transform(X_sample)
+                explainer = FraudExplainer(model, X_sample_scaled)
+            
+            return model, scaler, explainer, None
         else:
             error = f"Modèle ou scaler non trouvé. Veuillez entraîner le modèle d'abord."
-            return None, None, error
+            return None, None, None, error
     except Exception as e:
-        return None, None, f"Erreur : {str(e)}"
+        return None, None, None, f"Erreur : {str(e)}"
 
 
 @st.cache_data
@@ -97,7 +108,7 @@ st.title("🔐 Système de Détection de Fraude")
 st.markdown("---")
 
 # Chargement du modèle et des données
-model, scaler, model_error = load_model_and_scaler()
+model, scaler, explainer, model_error = load_model_and_scaler()
 df, data_error = load_data()
 
 # Sidebar
@@ -228,6 +239,51 @@ if mode == "🎲 Test avec données réelles":
                         st.info("⚡ **Surveillance accrue** - Risque modéré")
                     else:
                         st.success("✅ **Autoriser la transaction** - Risque faible")
+                    
+                    # Explicabilité SHAP
+                    if explainer is not None:
+                        st.markdown("---")
+                        st.subheader("🔍 Explicabilité - Pourquoi cette prédiction ?")
+                        st.markdown("**SHAP (SHapley Additive exPlanations)** montre quelles features ont le plus influencé la prédiction")
+                        
+                        with st.spinner("Calcul des explications SHAP..."):
+                            try:
+                                # Calculer SHAP values
+                                shap_values, expected_value = explainer.explain_prediction(
+                                    features, 
+                                    feature_cols=[col for col in df.columns if col != 'Class']
+                                )
+                                
+                                # Top features
+                                feature_names = [col for col in df.columns if col != 'Class']
+                                top_features = explainer.get_top_features(
+                                    shap_values, 
+                                    feature_names, 
+                                    top_n=10
+                                )
+                                
+                                # Afficher le tableau des top features
+                                st.markdown("**Top 10 Features les plus influentes**")
+                                st.dataframe(
+                                    top_features.style.background_gradient(subset=['Importance'], cmap='RdYlGn_r'),
+                                    use_container_width=True
+                                )
+                                
+                                # Bar plot
+                                st.markdown("**Impact des features sur la prédiction**")
+                                fig_shap = explainer.plot_bar(shap_values, feature_names, max_display=10)
+                                st.pyplot(fig_shap)
+                                
+                                # Explication
+                                st.info("📊 **Comment lire ce graphique** :\n"
+                                       "- 🔴 **Barres rouges** : Augmentent le risque de fraude\n"
+                                       "- 🔵 **Barres bleues** : Diminuent le risque de fraude\n"
+                                       "- Plus la barre est longue, plus l'impact est fort")
+                                
+                            except Exception as e:
+                                st.warning(f"⚠️ Impossible de calculer les explications SHAP : {str(e)}")
+                    else:
+                        st.info("💡 **SHAP non disponible** - Réentraînez le modèle pour activer l'explicabilité")
             else:
                 st.warning("Aucune transaction disponible avec ce filtre")
         
@@ -317,6 +373,48 @@ elif mode == "✏️ Saisie manuelle":
                 }
             ))
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Explicabilité SHAP
+            if explainer is not None:
+                st.markdown("---")
+                st.subheader("🔍 Explicabilité - Pourquoi cette prédiction ?")
+                st.markdown("**SHAP** identifie quelles features ont le plus d'impact sur la décision du modèle")
+                
+                with st.spinner("Calcul des explications SHAP..."):
+                    try:
+                        # Calculer SHAP values
+                        feature_names = [f'V{i}' for i in range(1, 29)] + ['Time', 'Amount']
+                        shap_values, expected_value = explainer.explain_prediction(
+                            features.reshape(1, -1), 
+                            feature_names
+                        )
+                        
+                        # Top features
+                        top_features = explainer.get_top_features(
+                            shap_values, 
+                            feature_names, 
+                            top_n=10
+                        )
+                        
+                        # Afficher le tableau
+                        st.markdown("**Top 10 Features influentes**")
+                        st.dataframe(
+                            top_features.style.background_gradient(subset=['Importance'], cmap='RdYlGn_r'),
+                            use_container_width=True
+                        )
+                        
+                        # Bar plot
+                        st.markdown("**Impact visuel**")
+                        fig_shap = explainer.plot_bar(shap_values, feature_names, max_display=10)
+                        st.pyplot(fig_shap)
+                        
+                        # Légende
+                        st.info("📊 **Lecture** :\n"
+                               "- 🔴 **Rouge** : Pousse vers la fraude\n"
+                               "- 🔵 **Bleu** : Pousse vers transaction normale")
+                        
+                    except Exception as e:
+                        st.warning(f"⚠️ Explications SHAP non disponibles : {str(e)}")
     else:
         st.error("Modèle non disponible")
 

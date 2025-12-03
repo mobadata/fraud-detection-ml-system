@@ -28,7 +28,7 @@ app = FastAPI(
 )
 
 # Charger le modèle et le scaler au démarrage
-MODEL_PATH = Path(__file__).parent.parent / "models" / "best_model_random_forest.pkl"
+MODEL_PATH = Path(__file__).parent.parent / "models" / "best_model_logistic.pkl"
 SCALER_PATH = Path(__file__).parent.parent / "models" / "scaler.pkl"
 
 model = None

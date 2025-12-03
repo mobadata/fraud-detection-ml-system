@@ -16,8 +16,7 @@ import plotly.express as px
 # Ajouter le dossier src au path
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from explainability import FraudExplainer
-from lime.lime_tabular import LimeTabularExplainer
+# Explicabilité : solution simple et robuste
 
 # Configuration de la page
 st.set_page_config(
@@ -241,61 +240,48 @@ if mode == "🎲 Test avec données réelles":
                     else:
                         st.success("✅ **Autoriser la transaction** - Risque faible")
                     
-                    # Explicabilité avec LIME
+                    # Explicabilité - Analyse des features
                     st.markdown("---")
-                    st.subheader("🔍 Explicabilité LIME - Pourquoi cette prédiction ?")
-                    st.markdown("**LIME** (Local Interpretable Model-agnostic Explanations) explique cette prédiction spécifique")
+                    st.subheader("🔍 Analyse des Features - Comprendre la prédiction")
                     
-                    with st.spinner("Calcul des explications LIME..."):
-                        try:
-                            # Créer l'explainer LIME
-                            lime_explainer = LimeTabularExplainer(
-                                training_data=np.zeros((10, len(feature_cols))),  # Dummy data
-                                feature_names=feature_cols,
-                                class_names=['Normal', 'Fraude'],
-                                mode='classification'
-                            )
-                            
-                            # Expliquer la prédiction
-                            exp = lime_explainer.explain_instance(
-                                data_row=features.flatten(),
-                                predict_fn=lambda x: model.predict_proba(scaler.transform(x)),
-                                num_features=10
-                            )
-                            
-                            # Extraire les features importantes
-                            lime_list = exp.as_list()
-                            lime_df = pd.DataFrame(lime_list, columns=['Feature', 'Impact'])
-                            lime_df = lime_df.sort_values('Impact', key=abs, ascending=False)
-                            
-                            # Afficher le tableau
-                            st.markdown("**Top 10 Features influentes selon LIME**")
-                            st.dataframe(lime_df, use_container_width=True)
-                            
-                            # Graphique
-                            fig = go.Figure(go.Bar(
-                                x=lime_df['Impact'],
-                                y=lime_df['Feature'],
-                                orientation='h',
-                                marker=dict(
-                                    color=['red' if x > 0 else 'blue' for x in lime_df['Impact']],
-                                )
-                            ))
-                            fig.update_layout(
-                                title="Impact des features sur la prédiction",
-                                xaxis_title="Impact (+ = vers Fraude, - = vers Normal)",
-                                yaxis_title="Feature",
-                                height=400
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            st.info("📊 **Comment lire** :\n"
-                                   "- 🔴 **Barres rouges (positives)** : Poussent vers la FRAUDE\n"
-                                   "- 🔵 **Barres bleues (négatives)** : Poussent vers NORMAL\n"
-                                   "- Plus la barre est longue, plus l'influence est forte")
-                            
-                        except Exception as e:
-                            st.warning(f"⚠️ Explications LIME non disponibles : {str(e)}")
+                    # Créer un DataFrame avec les valeurs
+                    feature_df = pd.DataFrame({
+                        'Feature': feature_cols,
+                        'Valeur': features.flatten()
+                    })
+                    
+                    # Trier par valeur absolue (les plus "extrêmes")
+                    feature_df['Valeur_abs'] = feature_df['Valeur'].abs()
+                    feature_df_sorted = feature_df.nlargest(10, 'Valeur_abs')[['Feature', 'Valeur']]
+                    
+                    st.markdown("**Top 10 features avec valeurs les plus significatives**")
+                    st.markdown("*Ces features ont les valeurs les plus éloignées de 0 (moyenne)*")
+                    st.dataframe(feature_df_sorted, use_container_width=True, height=300)
+                    
+                    # Visualisation
+                    fig = go.Figure(go.Bar(
+                        x=feature_df_sorted['Valeur'],
+                        y=feature_df_sorted['Feature'],
+                        orientation='h',
+                        marker=dict(
+                            color=feature_df_sorted['Valeur'],
+                            colorscale='RdBu_r',
+                            showscale=True,
+                            colorbar=dict(title="Valeur")
+                        )
+                    ))
+                    fig.update_layout(
+                        title="Valeurs des features principales",
+                        xaxis_title="Valeur standardisée (après PCA)",
+                        yaxis_title="Feature",
+                        height=400
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.info("💡 **Interprétation** :\n"
+                           "- Les valeurs **éloignées de 0** (positives ou négatives) sont **inhabituelles**\n"
+                           "- Ces anomalies influencent la prédiction du modèle\n"
+                           "- Plus la valeur absolue est grande, plus la feature est atypique")
             else:
                 st.warning("Aucune transaction disponible avec ce filtre")
         
@@ -386,56 +372,42 @@ elif mode == "✏️ Saisie manuelle":
             ))
             st.plotly_chart(fig, use_container_width=True)
             
-            # Explicabilité avec LIME
+            # Explicabilité - Analyse des features
             st.markdown("---")
-            st.subheader("🔍 Explicabilité LIME - Pourquoi cette prédiction ?")
+            st.subheader("🔍 Analyse des Features")
             
-            with st.spinner("Calcul des explications LIME..."):
-                try:
-                    feature_names = [f'V{i}' for i in range(1, 29)] + ['Time', 'Amount']
-                    
-                    # Créer l'explainer LIME
-                    lime_explainer = LimeTabularExplainer(
-                        training_data=np.zeros((10, 30)),
-                        feature_names=feature_names,
-                        class_names=['Normal', 'Fraude'],
-                        mode='classification'
-                    )
-                    
-                    # Expliquer la prédiction
-                    exp = lime_explainer.explain_instance(
-                        data_row=features.flatten(),
-                        predict_fn=lambda x: model.predict_proba(scaler.transform(x)),
-                        num_features=10
-                    )
-                    
-                    # Extraire les features importantes
-                    lime_list = exp.as_list()
-                    lime_df = pd.DataFrame(lime_list, columns=['Feature', 'Impact'])
-                    lime_df = lime_df.sort_values('Impact', key=abs, ascending=False)
-                    
-                    # Afficher
-                    st.markdown("**Top 10 Features influentes**")
-                    st.dataframe(lime_df, use_container_width=True)
-                    
-                    # Graphique
-                    fig = go.Figure(go.Bar(
-                        x=lime_df['Impact'],
-                        y=lime_df['Feature'],
-                        orientation='h',
-                        marker=dict(color=['red' if x > 0 else 'blue' for x in lime_df['Impact']])
-                    ))
-                    fig.update_layout(
-                        title="Impact des features",
-                        xaxis_title="Impact (+ = Fraude, - = Normal)",
-                        height=400
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    st.info("📊 🔴 Rouge = Fraude | 🔵 Bleu = Normal")
-                    
-                except Exception as e:
-                    st.warning(f"⚠️ Explications LIME non disponibles : {str(e)}")
+            feature_names = [f'V{i}' for i in range(1, 29)] + ['Time', 'Amount']
+            feature_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Valeur': features
+            })
+            
+            # Trier par valeur absolue
+            feature_df['Valeur_abs'] = feature_df['Valeur'].abs()
+            feature_df_sorted = feature_df.nlargest(10, 'Valeur_abs')[['Feature', 'Valeur']]
+            
+            st.markdown("**Top 10 features les plus significatives**")
+            st.dataframe(feature_df_sorted, use_container_width=True, height=300)
+            
+            # Graphique
+            fig = go.Figure(go.Bar(
+                x=feature_df_sorted['Valeur'],
+                y=feature_df_sorted['Feature'],
+                orientation='h',
+                marker=dict(
+                    color=feature_df_sorted['Valeur'],
+                    colorscale='RdBu_r',
+                    showscale=True
+                )
+            ))
+            fig.update_layout(
+                title="Valeurs des features principales",
+                xaxis_title="Valeur",
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Interprétation** : Les valeurs éloignées de 0 sont inhabituelles et influencent la prédiction")
     else:
         st.error("Modèle non disponible")
 

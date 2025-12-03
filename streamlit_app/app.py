@@ -56,20 +56,14 @@ def load_model_and_scaler():
             model = joblib.load(MODEL_PATH)
             scaler = joblib.load(SCALER_PATH)
             
-            # Charger un échantillon de données pour SHAP
-            explainer = None
-            if DATA_PATH.exists():
-                df_sample = pd.read_csv(DATA_PATH).sample(n=min(200, len(pd.read_csv(DATA_PATH))), random_state=42)
-                X_sample = df_sample.drop('Class', axis=1)
-                X_sample_scaled = scaler.transform(X_sample)
-                explainer = FraudExplainer(model, X_sample_scaled)
+            # Pas d'explainer complexe - on utilise la solution simple
             
-            return model, scaler, explainer, None
+            return model, scaler, None
         else:
             error = f"Modèle ou scaler non trouvé. Veuillez entraîner le modèle d'abord."
-            return None, None, None, error
+            return None, None, error
     except Exception as e:
-        return None, None, None, f"Erreur : {str(e)}"
+        return None, None, f"Erreur : {str(e)}"
 
 
 @st.cache_data
@@ -108,7 +102,7 @@ st.title("🔐 Système de Détection de Fraude")
 st.markdown("---")
 
 # Chargement du modèle et des données
-model, scaler, explainer, model_error = load_model_and_scaler()
+model, scaler, model_error = load_model_and_scaler()
 df, data_error = load_data()
 
 # Sidebar
